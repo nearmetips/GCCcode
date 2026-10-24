@@ -1,0 +1,5 @@
+/bin/
+/dist/
+/gcccode
+*.exe
+.DS_Store

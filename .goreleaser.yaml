@@ -1,0 +1,63 @@
+version: 2
+
+project_name: gcccode
+
+builds:
+  - id: gcccode
+    main: ./cmd/gcccode
+    binary: gcccode
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -tags=nogui
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+
+archives:
+  - formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  disable: false
+
+release:
+  github:
+    owner: nearmetips
+    name: DailiCode
+
+# 配方只生成到 dist/，不往 tap / bucket 仓库推（这两个仓库还没建，默认 token 也推不进去）。
+# 以后建好 tap 仓库，把 skip_upload 去掉并换成有权限的 token 即可。
+brews:
+  - name: gcccode
+    skip_upload: true
+    repository:
+      owner: nearmetips
+      name: homebrew-tap
+    homepage: https://github.com/nearmetips/DailiCode
+    description: Schedule several Claude and ChatGPT subscriptions without dropping the chat
+    license: Apache-2.0
+
+scoops:
+  - name: gcccode
+    skip_upload: true
+    repository:
+      owner: nearmetips
+      name: scoop-bucket
+    homepage: https://github.com/nearmetips/DailiCode
+    description: Schedule several Claude and ChatGPT subscriptions without dropping the chat
+    license: Apache-2.0

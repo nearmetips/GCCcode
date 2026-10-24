@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GCC Code</title>
+<style>
+  :root { color-scheme: light dark; --bg:#f4f1ea; --ink:#1c1915; --line:#ddd6c8; --card:#fffdf8; --ok:#1f7a4d; --warn:#9a5b00; --bad:#9c2f2f; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#161614; --ink:#f3efe6; --line:#3a362f; --card:#221f1b; --ok:#7dcea0; --warn:#e0b15a; --bad:#e08b8b; }
+  }
+  body { margin:0; font:15px/1.5 "Iowan Old Style", Palatino, "Songti SC", serif; background:var(--bg); color:var(--ink); }
+  main { max-width:880px; margin:0 auto; padding:32px 20px 64px; }
+  h1 { font-weight:600; font-size:28px; margin:0 0 4px; }
+  .sub { opacity:.7; margin:0 0 24px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:12px 0 20px; }
+  button, select { font:inherit; background:var(--card); color:inherit; border:1px solid var(--line); border-radius:8px; padding:6px 10px; }
+  button { cursor:pointer; }
+  table { width:100%; border-collapse:collapse; background:var(--card); }
+  th, td { text-align:left; padding:10px 12px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-size:12px; letter-spacing:.04em; text-transform:uppercase; opacity:.6; }
+  .ok { color:var(--ok); } .warn { color:var(--warn); } .bad { color:var(--bad); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-top:18px; }
+  a { color:inherit; }
+</style>
+</head>
+<body>
+<main>
+  <h1>GCC Code</h1>
+  <p class="sub" id="version"></p>
+  <div class="row">
+    <label>选号策略
+      <select id="strategy">
+        <option value="smart">smart · 先用最快重置的</option>
+        <option value="pace">pace · 按周额度匀速</option>
+        <option value="manual">manual · 只用指定账号</option>
+      </select>
+    </label>
+    <button id="reload" type="button">刷新</button>
+  </div>
+  <div class="card warn" id="waiting" hidden></div>
+  <table>
+    <thead><tr><th>账号</th><th>会员</th><th>5 小时</th><th>每周</th><th>状态</th><th></th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <div class="card" id="relay"></div>
+  <div class="card" id="upsell" hidden></div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function pct(w) { return w ? Math.round(w.used_pct) + "%" : "—"; }
+function cls(reason) {
+  if (reason === "可用" || reason === "使用中") return "ok";
+  if ((reason || "").includes("隔离") || (reason || "").includes("停用")) return "bad";
+  return "warn";
+}
+async function load() {
+  const r = await fetch("/api/state");
+  const d = await r.json();
+  $("version").textContent = "v" + d.version + " · 只调度官方客户端，请求不经过 GCC Code";
+  $("strategy").value = d.strategy;
+  const waiting = d.waiting || [];
+  $("waiting").hidden = waiting.length === 0;
+  $("waiting").innerHTML = waiting.map(esc).join("<br>");
+  $("rows").innerHTML = d.accounts.map(a => `<tr>
+    <td>${esc(a.label)}<br><span class="sub">${esc(a.email || a.id)}</span></td>
+    <td>${esc(a.kind)}${a.plan ? " · " + esc(a.plan) : ""}</td>
+    <td>${pct(a.five_hour)}</td>
+    <td>${pct(a.weekly)}</td>
+    <td class="${cls(a.reason)}">${esc(a.reason)}</td>
+    <td>${a.quarantined ? `<button data-unq="${esc(a.id)}">解除隔离</button>` : `<button data-use="${esc(a.kind)}" data-id="${esc(a.id)}">用这个号</button>`}</td>
+  </tr>`).join("") || `<tr><td colspan="6">还没有账号。终端运行 gcccode account add claude</td></tr>`;
+  const relay = d.relay;
+  $("relay").innerHTML = `<strong>中转兜底</strong> ${relay.ready ? "已就绪" : "未配置"} · ${esc(relay.name || "gcccode")}
+    <div class="row"><button id="relay-toggle" type="button">${relay.enabled ? "关闭" : "开启"}</button></div>`;
+  $("relay-toggle").onclick = async () => { await post("/api/relay", {enabled: !relay.enabled}); load(); };
+  const box = $("upsell");
+  box.hidden = !d.upsell;
+  if (d.upsell) box.innerHTML = `额度都用完时可以 <a href="${esc(d.buy_url)}" target="_blank" rel="noopener">再加一个会员号</a>`;
+}
+async function post(url, body) {
+  await fetch(url, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
+}
+$("rows").onclick = async (e) => {
+  const t = e.target;
+  if (t.dataset.use) { await post("/api/use", {kind:t.dataset.use, id:t.dataset.id}); load(); }
+  if (t.dataset.unq) { await post("/api/unquarantine", {id:t.dataset.unq}); load(); }
+};
+$("strategy").onchange = async () => { await post("/api/strategy", {strategy:$("strategy").value}); };
+$("reload").onclick = load;
+load();
+setInterval(load, 15000);
+</script>
+</body>
+</html>

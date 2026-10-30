@@ -6,7 +6,7 @@
   "architecture": {
     "64bit": {
       "url": "https://github.com/nearmetips/GCCcode/releases/download/v0.1.0/gcccode_0.1.0_windows_amd64.zip",
-      "hash": "REPLACE_AT_RELEASE"
+      "hash": "36f846daa1f7510bde0f1b332f035f169de73d97bff7734c673e063f6ce76f4a"
     }
   },
   "bin": "gcccode.exe",

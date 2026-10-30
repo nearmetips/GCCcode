@@ -757,6 +757,11 @@ func claudeEnv(base []string, s core.Settings, acc core.Account) []string {
 	if !claude.IsMainHome(s, acc.ConfigDir) {
 		out = append(out, "CLAUDE_CONFIG_DIR="+acc.ConfigDir)
 	}
+	if claude.UsesToken(acc) {
+		if tok, ok := claude.ReadToken(acc.ID); ok {
+			out = append(out, claude.TokenEnv+"="+tok)
+		}
+	}
 	return proxyEnv(out, claude.EffectiveProxy(s, acc))
 }
 

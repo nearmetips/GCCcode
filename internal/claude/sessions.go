@@ -186,9 +186,16 @@ func AccountByDir(st *core.Store, dir string) (*core.Account, bool) {
 
 // Ready reports whether a Claude account has a recorded login.
 func Ready(s core.Settings, a core.Account) bool {
+	if usesToken(a) {
+		_, ok := ReadToken(a.ID)
+		return ok && TokenDaysLeft(a, time.Now()) >= 0
+	}
 	_, ok := ReadIdentity(s, a.ConfigDir)
 	return ok
 }
+
+// UsesToken reports whether the account signs in with a setup-token.
+func UsesToken(a core.Account) bool { return usesToken(a) }
 
 func ExecutableHint() string {
 	p, err := os.Executable()

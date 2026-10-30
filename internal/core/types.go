@@ -34,6 +34,9 @@ type Account struct {
 	Quarantined      bool      `json:"quarantined,omitempty"`
 	QuarantineReason string    `json:"quarantine_reason,omitempty"`
 	CreatedAt        time.Time `json:"created_at"`
+	// TokenAt is when a Claude account's setup-token was saved. Set means the
+	// account signs in with that token instead of a keychain login.
+	TokenAt time.Time `json:"token_at,omitzero"`
 }
 
 // Window is one rate-limit window as reported by the official client.

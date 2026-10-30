@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nearmetips/DailiCode/internal/claude"
 	"github.com/nearmetips/DailiCode/internal/core"
 )
 
@@ -106,6 +107,27 @@ func TestChildEnvIsolatesGeminiAndGrokHomes(t *testing.T) {
 	grokEnv := ChildEnv(s, grk)
 	if !hasEnv(grokEnv, "GROK_HOME="+grk.ConfigDir) || hasEnv(grokEnv, "GROK_HOME=/wrong") {
 		t.Fatalf("grok env %v", grokEnv)
+	}
+}
+
+func TestClaudeEnvCarriesOnlyTheAccountsOwnToken(t *testing.T) {
+	t.Setenv("GCCCODE_HOME", t.TempDir())
+	s := core.DefaultSettings()
+	s.ClaudeHome = t.TempDir()
+	tok := "sk-ant-oat01-" + strings.Repeat("a", 60)
+	withToken := core.Account{ID: "cl-tok", Kind: core.KindClaude, ConfigDir: t.TempDir(), TokenAt: time.Now()}
+	if err := claude.SaveToken(withToken.ID, tok); err != nil {
+		t.Fatal(err)
+	}
+	keychain := core.Account{ID: "cl-key", Kind: core.KindClaude, ConfigDir: t.TempDir()}
+	base := []string{"CLAUDE_CODE_OAUTH_TOKEN=from-zshrc", "PATH=/bin"}
+	if env := claudeEnv(base, s, withToken); !hasEnv(env, "CLAUDE_CODE_OAUTH_TOKEN="+tok) || hasEnv(env, "CLAUDE_CODE_OAUTH_TOKEN=from-zshrc") {
+		t.Fatalf("token account env %v", env)
+	}
+	for _, e := range claudeEnv(base, s, keychain) {
+		if strings.HasPrefix(e, "CLAUDE_CODE_OAUTH_TOKEN=") {
+			t.Fatalf("keychain account got a token: %s", e)
+		}
 	}
 }
 

@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/nearmetips/DailiCode/internal/agy"
+	"github.com/nearmetips/DailiCode/internal/app"
+	"github.com/nearmetips/DailiCode/internal/browser"
 	"github.com/nearmetips/DailiCode/internal/claude"
 	"github.com/nearmetips/DailiCode/internal/codex"
 	"github.com/nearmetips/DailiCode/internal/core"
@@ -20,6 +22,23 @@ import (
 func main() {
 	launcher.EnsureGateway = ensureGatewayRunning
 	args := os.Args[1:]
+	if id := os.Getenv(browser.ForEnv); id != "" && len(args) == 1 && isURL(args[0]) {
+		// A client signing in opened this link with gcccode as its BROWSER.
+		if err := openAccountBrowser(id, args[0]); err != nil {
+			die(err)
+		}
+		return
+	}
+	if len(args) == 1 && strings.HasPrefix(args[0], "-psn_") {
+		args = nil // Finder's process serial number on older macOS
+	}
+	if len(args) == 0 && app.Bundled() {
+		// Double-clicked in Finder or started from the Dock.
+		if err := cmdApp(nil); err != nil {
+			die(err)
+		}
+		return
+	}
 	if len(args) == 0 {
 		if err := cmdAccounts(); err != nil {
 			die(err)
@@ -29,6 +48,8 @@ func main() {
 	}
 	var err error
 	switch args[0] {
+	case "app":
+		err = cmdApp(args[1:])
 	case "help", "-h", "--help":
 		fmt.Println(longHelp())
 	case "version", "-v", "--version":
@@ -293,7 +314,8 @@ func shortHelp() string {
   gcccode account add claude|codex|gemini|grok|agy
   gcccode claude|codex|gemini|grok|agy   选一个有额度的号，启动官方客户端
   gcccode sessions              这个目录最近的会话
-  gcccode web                   打开本机面板`
+  gcccode app                   桌面窗口版的面板（macOS；其他系统退回浏览器）
+  gcccode web                   在浏览器里打开本机面板：加号、换号、设代理都能点`
 }
 
 func longHelp() string {
@@ -304,7 +326,11 @@ func longHelp() string {
 ` + shortHelp() + `
 
   gcccode account import [claude|codex|gemini|grok|agy]  把当前已登录的号收进号池
-  gcccode account login <id>              重新登录
+  gcccode account add claude [名称]       在这个号专用的浏览器里授权，用 claude setup-token 拿一年期 token
+  gcccode account add claude --login      改用完整登录（Claude in Chrome、Remote Control 要这种）
+  gcccode account token <id> [token|-]    换上新 token；不写就重新走一遍 setup-token
+  gcccode account browser <id> [网址]     打开这个号专用的浏览器
+  gcccode account login <id>              重新登录；token 号就是续期
   gcccode account rm <id>                 从号池移除（不删除聊天记录）
   gcccode account proxy <id> <url|off>    给这个号固定出口代理
   gcccode account disable|enable|unquarantine <id>

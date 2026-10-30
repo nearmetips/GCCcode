@@ -1,6 +1,6 @@
 BINARY := bin/gcccode
 
-.PHONY: build cli test fmt
+.PHONY: build cli test fmt app dmg icon
 
 build:
 	mkdir -p bin
@@ -15,3 +15,14 @@ test:
 
 fmt:
 	gofmt -w ./cmd ./internal
+
+# macOS 桌面应用：dist/GCC Code.app（通用二进制，自签名）
+app:
+	scripts/build-app.sh
+
+dmg:
+	scripts/build-app.sh --dmg
+
+# 重新生成应用图标（需要 Pillow）
+icon:
+	python3 packaging/macos/icon.py

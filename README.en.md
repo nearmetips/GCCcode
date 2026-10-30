@@ -19,7 +19,7 @@ There is also an optional gateway (`gcccode gateway`, see "Optional gateway" bel
 ## Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/nearmetips/DailiCode/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/nearmetips/GCCcode/main/install.sh | sh
 ```
 
 `--proxy` and `--mirror` are supported. The SHA-256 still comes from the GitHub release, not from the mirror.
@@ -31,10 +31,34 @@ make cli      # -tags nogui, no cgo
 
 Homebrew and Scoop formulas live in [packaging/](packaging/). goreleaser fills in the checksums at release time.
 
-## Use
+## Desktop app (macOS)
+
+If you would rather not touch a terminal at all, download `GCC-Code-<version>.dmg` from [Releases](https://github.com/nearmetips/GCCcode/releases) and drag it into Applications. Or build it yourself:
 
 ```sh
-gcccode account add claude
+make app                        # builds dist/GCC Code.app (universal arm64 + Intel)
+scripts/build-app.sh --install  # also copies it to ~/Applications
+scripts/build-app.sh --dmg      # packs dist/GCC-Code-<version>.dmg
+```
+
+Double-click `GCC Code.app` and you get a native window: pool / add account / settings on the left, each account's quota bars and status on the right. Adding a Claude account happens entirely inside the window: click Add, it opens that account's own browser, you sign in and authorize, and the token is stored for you, with no terminal and no copy-paste. One click under Settings → Command line tool installs the `gcccode` command into `~/.local/bin`. Dark mode follows the system.
+
+The same binary opens the window from a terminal with `gcccode app`. Linux, Windows and `-tags nogui` builds have no native window, so `gcccode app` falls back to the panel in your browser. A locally built .app is only ad-hoc signed; if macOS blocks the first launch, right-click → Open once.
+
+## Use
+
+With the command-line install, run one command:
+
+```sh
+gcccode web
+```
+
+The panel opens in your browser, same content as the desktop app. It brings the logins already on this machine into the pool with one click; adding or re-signing an account opens a terminal window and you sign in in the browser; a Claude account can also open its own browser or take a new token; removing an account, setting its proxy, choosing the strategy, and switching auto-continue and the Claude Code status line are all buttons. The panel listens on loopback only and refuses requests sent by other websites.
+
+The same things as commands:
+
+```sh
+gcccode account add claude   # authorize in this account's own browser, get a one-year token
 gcccode account add codex
 gcccode account add gemini
 gcccode account add grok
@@ -53,9 +77,33 @@ gcccode resume       # newest session here, on an account with quota; or pass an
 
 gcccode integrate
 eval "$(gcccode shell-init)"   # claude / codex / gemini / grok / agy all go through the pool
-gcccode web          # 127.0.0.1:4725 by default
+gcccode app          # the panel as a desktop window (macOS)
+gcccode web          # opens the panel in the browser, 127.0.0.1:4725 by default; --no-open only serves it
 gcccode tray
 ```
+
+### Adding Claude subscriptions
+
+Each Claude account signs in with its own long-lived token, and switching accounts means switching tokens:
+
+1. Run `gcccode account add claude` (or press "添加一个号" in the panel). If you already have Claude accounts, it first asks which proxy this one uses.
+2. gcccode runs the official `claude setup-token` and opens its authorization page only in **this account's own browser**: a separate Chrome (or Edge, Brave, Chromium) user data directory that shares no login with your everyday browser or with other accounts, and uses this account's proxy. Sign in to the Pro account there and authorize.
+3. The terminal prints a token starting with `sk-ant-oat01-`, valid for about a year. Paste it back into the terminal and the account is added.
+
+Why a browser of its own: the authorization page authorizes whichever account the browser is already signed in to. Authorizing account B in a browser signed in to A hands back A's token. If you sign in with an email link, copy the link into this account's browser instead of clicking it. Without a Chromium-based browser, gcccode asks you to create a new Chrome profile and open the authorization link there.
+
+From then on, whichever account `gcccode claude` picks, its token is handed to Claude Code as `CLAUDE_CODE_OAUTH_TOKEN`, and a variable of the same name exported in your shell is ignored. So **do not** put the token in `.zshrc`. Tokens are stored in `~/.config/gcccode/claude-token/`, readable only by you.
+
+```sh
+gcccode account browser work         # open this account's browser again, e.g. to check usage on claude.ai
+gcccode account login work           # renew: run setup-token again
+gcccode account token work -         # already have a token: read it from stdin
+gcccode account add claude --login   # full sign-in instead (kept in the keychain)
+```
+
+`gcccode accounts`, `doctor` and the panel show the days a token has left and remind you to renew within 30 days; an expired account is never picked. Removing an account deletes its local token and browser; revoke the token itself in claude.ai settings.
+
+A long-lived token is limited to inference: quota tracking and the status line work, but Claude in Chrome and Remote Control do not. Add accounts that need those with `--login`.
 
 Strategies are `smart` (spend the allowance that resets soonest), `pace` (weekly remainder per hour until reset), and `manual` (never substitute). Both `smart` and `pace` put an account within 10 points of the limit last, so a new session does not have to switch accounts minutes after it starts. `gcccode continue on` resumes on the next account after you leave a spent session; the default asks first. When every account is spent, the launcher, `gcccode accounts`, the status line and the panel name the account that comes back first and when.
 
@@ -63,7 +111,7 @@ Strategies are `smart` (spend the allowance that resets soonest), `pace` (weekly
 
 ## History survives a switch
 
-Each Claude account gets its own `CLAUDE_CONFIG_DIR`. Claude Code stores that login in a keychain item hashed from the directory, and GCC Code never reads the token. `projects/`, `history.jsonl`, `CLAUDE.md`, skills and commands are symlinks to `~/.claude`, so the local transcript stays.
+Each Claude account gets its own `CLAUDE_CONFIG_DIR`. A long-lived token account only has its token handed to Claude Code at launch. For an account added with `--login`, Claude Code stores the login in a keychain item hashed from the directory, and GCC Code never reads it. `projects/`, `history.jsonl`, `CLAUDE.md`, skills and commands are symlinks to `~/.claude`, so the local transcript stays.
 
 A second Claude subscription does not resume the first account's cloud session, which is how the vendor groups the two logins. The switch writes a local handoff and starts a new session. `--resume` is only used on the account that started the session. The handoff carries the original request (kept across repeated handoffs), the latest todo list, files the session edited, uncommitted `git status`, answers you gave to the agent's questions, and the recent turns, without rate-limit errors, injected client context, or subagent chatter.
 
@@ -86,6 +134,18 @@ Antigravity (`agy`) takes only the login already on this machine for now. agy ke
 ## Quota
 
 Nothing extra is sent to the vendors. Claude Code's status-line JSON includes `rate_limits`, and Codex rollout files include `rate_limits` on `token_count` events. Gemini and Grok keep selecting with unknown quota until a limit or login error appears in the local transcript. Antigravity's log is read after agy exits; only error-level lines such as `RESOURCE_EXHAUSTED` or `quota reached` count, not server overload or image-generation limits. Near the limit you get one notification; at the limit the account cools down until the window resets.
+
+## Usage page
+
+The panel's "用量" (usage) page shows how many tokens each account actually used: today / 7 / 30 / 90 days, a daily chart coloured by client, then per account, per model, and the most recent sessions. Everything comes from the transcripts the official clients keep on this machine; nothing is requested or uploaded:
+
+- Claude Code: the session jsonl files under `~/.claude/projects/` (`usage` input / output / cache read / cache write)
+- Codex: rollout files under `~/.codex/sessions/` and `archived_sessions/` (deltas of the cumulative `token_count` events)
+- Grok CLI: `sessions/*/updates.jsonl` `turn_completed` events in each account's home
+- Gemini CLI: per-message `tokens` in `tmp/*/chats/session-*.json`
+- Antigravity: keeps no token counts locally, so it cannot be counted; the page says so
+
+A session is attributed to the account GCC Code launched it with; Codex sessions can also be matched by the account id in the file. Sessions started with the vendor's own command cannot be matched and are listed as "unattributed" rather than guessed. Scanning is incremental — each file is read from where it was left off — and cached in `~/.config/gcccode/usage-cache.json`; 1.4 GB of Codex transcripts take under a second the first time and a few milliseconds afterwards.
 
 ## Optional gateway (off by default)
 

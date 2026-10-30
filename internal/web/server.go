@@ -18,6 +18,7 @@ import (
 	"github.com/nearmetips/DailiCode/internal/core"
 	"github.com/nearmetips/DailiCode/internal/gemini"
 	"github.com/nearmetips/DailiCode/internal/grok"
+	"github.com/nearmetips/DailiCode/internal/integrate"
 	"github.com/nearmetips/DailiCode/internal/quota"
 	"github.com/nearmetips/DailiCode/internal/relay"
 	"github.com/nearmetips/DailiCode/internal/scheduler"
@@ -26,14 +27,23 @@ import (
 //go:embed assets/*
 var assets embed.FS
 
+// App is set when the panel runs inside the desktop window rather than a
+// browser tab. The page then leaves room for the window's title bar.
+var App bool
+
 type view struct {
-	Version  string        `json:"version"`
-	Strategy string        `json:"strategy"`
-	Accounts []accountView `json:"accounts"`
-	Waiting  []string      `json:"waiting"`
-	Relay    relayView     `json:"relay"`
-	Upsell   bool          `json:"upsell"`
-	BuyURL   string        `json:"buy_url"`
+	Version      string        `json:"version"`
+	App          bool          `json:"app"`
+	CLI          cliView       `json:"cli"`
+	Strategy     string        `json:"strategy"`
+	AutoContinue bool          `json:"auto_continue"`
+	StatusLine   bool          `json:"status_line"`
+	Clients      []clientView  `json:"clients"`
+	Accounts     []accountView `json:"accounts"`
+	Waiting      []string      `json:"waiting"`
+	Relay        relayView     `json:"relay"`
+	Upsell       bool          `json:"upsell"`
+	BuyURL       string        `json:"buy_url"`
 }
 
 type accountView struct {
@@ -44,6 +54,11 @@ type accountView struct {
 	Plan        string       `json:"plan,omitempty"`
 	Reason      string       `json:"reason"`
 	Quarantined bool         `json:"quarantined"`
+	Disabled    bool         `json:"disabled"`
+	Token       bool         `json:"token"`
+	TokenDays   int          `json:"token_days,omitempty"`
+	Proxy       string       `json:"proxy,omitempty"`
+	ProxyNote   string       `json:"proxy_note,omitempty"`
 	FiveHour    *core.Window `json:"five_hour,omitempty"`
 	Weekly      *core.Window `json:"weekly,omitempty"`
 }
@@ -74,22 +89,58 @@ func getenv(k string) string {
 	return strings.TrimSpace(env(k))
 }
 
-// Serve listens until the process exits. addr must be a loopback host.
-func Serve(addr string) error {
-	ln, err := listenLoopback(addr)
+// Serve listens until the process exits. addr must be a loopback host. With
+// open set, the panel also opens in the default browser once it is listening.
+func Serve(addr string, open bool) error {
+	ln, err := Listen(addr)
 	if err != nil {
 		return err
 	}
+	url := "http://" + ln.Addr().String()
+	fmt.Fprintf(stdout(), "面板 %s\n", url)
+	if open {
+		_ = openBrowser(url)
+	}
+	return ServeOn(ln)
+}
+
+// Listen binds the panel to addr, which must name a loopback host. Port 0
+// picks a free port; the listener's Addr tells which.
+func Listen(addr string) (net.Listener, error) { return listenLoopback(addr) }
+
+// ServeOn answers panel requests on ln until it closes.
+func ServeOn(ln net.Listener) error { return http.Serve(ln, guard(routes())) }
+
+func routes() *http.ServeMux {
 	mux := http.NewServeMux()
 	sub, _ := fs.Sub(assets, "assets")
-	mux.Handle("/", http.FileServer(http.FS(sub)))
+	files := http.FileServer(http.FS(sub))
+	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The assets are built into the binary; after an upgrade the window
+		// must not keep showing the old ones.
+		w.Header().Set("Cache-Control", "no-cache")
+		files.ServeHTTP(w, r)
+	}))
 	mux.HandleFunc("/api/state", handleState)
 	mux.HandleFunc("/api/strategy", handleStrategy)
 	mux.HandleFunc("/api/use", handleUse)
 	mux.HandleFunc("/api/unquarantine", handleUnquarantine)
 	mux.HandleFunc("/api/relay", handleRelay)
-	fmt.Fprintf(stdout(), "面板 http://%s\n", ln.Addr().String())
-	return http.Serve(ln, mux)
+	mux.HandleFunc("/api/import", handleImport)
+	mux.HandleFunc("/api/login", handleLogin)
+	mux.HandleFunc("/api/remove", handleRemove)
+	mux.HandleFunc("/api/proxy", handleProxy)
+	mux.HandleFunc("/api/enable", handleEnable)
+	mux.HandleFunc("/api/continue", handleContinue)
+	mux.HandleFunc("/api/statusline", handleStatusLine)
+	mux.HandleFunc("/api/token", handleToken)
+	mux.HandleFunc("/api/browser", handleBrowser)
+	mux.HandleFunc("/api/claude/setup", handleSetup)
+	mux.HandleFunc("/api/claude/setup/status", handleSetupStatus)
+	mux.HandleFunc("/api/claude/setup/cancel", handleSetupCancel)
+	mux.HandleFunc("/api/cli", handleCLI)
+	mux.HandleFunc("/api/usage", handleUsage)
+	return mux
 }
 
 func listenLoopback(addr string) (net.Listener, error) {
@@ -153,6 +204,14 @@ func snapshot(st *core.Store) view {
 			row := accountView{
 				ID: s.Account.ID, Kind: s.Account.Kind, Label: label, Email: s.Account.Email,
 				Plan: s.Account.Plan, Reason: s.Reason, Quarantined: s.Account.Quarantined,
+				Disabled: s.Account.Disabled, Proxy: s.Account.Proxy,
+			}
+			if kind == core.KindClaude {
+				if claude.UsesToken(s.Account) {
+					row.Token, row.TokenDays = true, claude.TokenDaysLeft(s.Account, now)
+				}
+				row.Proxy = claude.EffectiveProxy(st.Settings, s.Account)
+				row.ProxyNote = panelNote(claude.EgressProblem(st.Settings, st.Accounts, s.Account.ID))
 			}
 			if s.HasQuota {
 				row.FiveHour = s.Quota.FiveHour
@@ -172,7 +231,8 @@ func snapshot(st *core.Store) view {
 		buy = "https://gcccode.com/"
 	}
 	return view{
-		Version: core.Version, Strategy: st.Settings.Strategy, Accounts: rows, Waiting: waiting,
+		Version: core.Version, App: App, CLI: cliStatus(), Strategy: st.Settings.Strategy, Accounts: rows, Waiting: waiting,
+		AutoContinue: st.Settings.AutoContinue, StatusLine: integrate.Installed(st.Settings), Clients: clients(st),
 		Relay: relayView{
 			Enabled: st.Settings.Relay.Enabled, Ready: relay.Ready(st.Settings.Relay),
 			Name: st.Settings.Relay.Name, HasToken: st.Settings.Relay.Token != "",
@@ -182,6 +242,14 @@ func snapshot(st *core.Store) view {
 }
 
 func codexReady(a core.Account) bool { return fileExists(codex.VaultPath(a.ID)) }
+
+// panelNote drops the command a note ends with; the panel shows a button for it.
+func panelNote(msg string) string {
+	if before, _, ok := strings.Cut(msg, "：gcccode "); ok {
+		return before
+	}
+	return msg
+}
 
 func handleStrategy(w http.ResponseWriter, r *http.Request) {
 	var body struct {
@@ -279,7 +347,7 @@ func writeErr(w http.ResponseWriter, err error) {
 	if err != nil {
 		var run *codex.RunningError
 		if errors.As(err, &run) {
-			http.Error(w, err.Error(), http.StatusConflict)
+			http.Error(w, codexBusy, http.StatusConflict)
 			return
 		}
 		http.Error(w, err.Error(), http.StatusBadRequest)

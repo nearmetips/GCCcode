@@ -1,11 +1,11 @@
 {
   "version": "0.1.0",
   "description": "Schedule several Claude and ChatGPT subscriptions without dropping the chat",
-  "homepage": "https://github.com/nearmetips/DailiCode",
+  "homepage": "https://github.com/nearmetips/GCCcode",
   "license": "Apache-2.0",
   "architecture": {
     "64bit": {
-      "url": "https://github.com/nearmetips/DailiCode/releases/download/v0.1.0/gcccode_0.1.0_windows_amd64.zip",
+      "url": "https://github.com/nearmetips/GCCcode/releases/download/v0.1.0/gcccode_0.1.0_windows_amd64.zip",
       "hash": "REPLACE_AT_RELEASE"
     }
   },
@@ -14,7 +14,7 @@
   "autoupdate": {
     "architecture": {
       "64bit": {
-        "url": "https://github.com/nearmetips/DailiCode/releases/download/v$version/gcccode_$version_windows_amd64.zip"
+        "url": "https://github.com/nearmetips/GCCcode/releases/download/v$version/gcccode_$version_windows_amd64.zip"
       }
     }
   }

@@ -19,13 +19,13 @@ GCC Code 主路径不走那条路：官方客户端只用它自己的登录，�
 ## 安装
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/nearmetips/DailiCode/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/nearmetips/GCCcode/main/install.sh | sh
 ```
 
 墙内可以加代理和镜像。校验和始终从发布页取，不从镜像取。
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/nearmetips/DailiCode/main/install.sh | sh -s -- \
+curl -fsSL https://raw.githubusercontent.com/nearmetips/GCCcode/main/install.sh | sh -s -- \
   --proxy http://127.0.0.1:7890 --mirror https://mirror.example/github.com
 ```
 
@@ -38,10 +38,34 @@ make cli      # 纯命令行
 
 Homebrew 和 Scoop 的配方在 [packaging/](packaging/)。发布时由 goreleaser 填上校验和。
 
-## 使用
+## 桌面应用（macOS）
+
+不想碰终端的话，直接用桌面版：到 [Releases](https://github.com/nearmetips/GCCcode/releases) 下载 `GCC-Code-<版本>.dmg`，拖进「应用程序」即可。也可以自己打包：
 
 ```sh
-gcccode account add claude     # 新建隔离目录，打开官方登录
+make app                        # 生成 dist/GCC Code.app（arm64 + Intel 通用）
+scripts/build-app.sh --install  # 顺手装进 ~/Applications
+scripts/build-app.sh --dmg      # 打成 dist/GCC-Code-<版本>.dmg
+```
+
+双击 `GCC Code.app` 就是一个原生窗口：左边号池 / 添加账号 / 设置，右边是每个号的额度条和状态。加 Claude 号整个流程都在窗口里走完——点「添加」，它打开这个号的专用浏览器，你登录、点授权，token 自动收好，不用开终端也不用复制粘贴。在「设置 → 命令行工具」点一下，就把 `gcccode` 命令装到 `~/.local/bin`，终端里也能用。深色模式跟随系统。
+
+同一个二进制也能从终端起窗口：`gcccode app`。Linux、Windows 和 `-tags nogui` 的构建没有原生窗口，`gcccode app` 会退回到在浏览器里打开面板。本地编译的 .app 只做了自签名，第一次打开如果被拦，右键 → 打开一次即可。
+
+## 使用
+
+装的是命令行的话，只敲一句：
+
+```sh
+gcccode web
+```
+
+浏览器会打开本机面板，内容和桌面版一样。这台电脑上已经登录的号一键放进号池；加新号、重新登录会弹出一个终端窗口，在浏览器里登录就行；Claude 号还能打开它的专用浏览器、粘贴新 token；移除、给号设代理、换选号方式、开关自动续接和 Claude Code 状态栏都能点；「用量」页看每个号实际用了多少 token。面板只听本机地址，别的网站发来的请求一律拒绝。
+
+下面是对应的命令：
+
+```sh
+gcccode account add claude     # 在这个号专用的浏览器里授权，拿一年期 token
 gcccode account add codex
 gcccode account add gemini
 gcccode account add grok
@@ -60,9 +84,33 @@ gcccode resume                 # 在还有额度的号上续接这个目录最�
 
 gcccode integrate              # 额度进 Claude Code 状态栏，原来的状态栏照常显示；integrate off 撤销
 eval "$(gcccode shell-init)"   # 之后直接敲 claude / codex / gemini / grok / agy 也走号池
-gcccode web                    # 本机面板，默认 127.0.0.1:4725
+gcccode app                    # 桌面窗口版面板（macOS）
+gcccode web                    # 本机面板，自动打开浏览器，默认 127.0.0.1:4725；--no-open 只启动不打开
 gcccode tray                   # 菜单栏
 ```
+
+### 加 Claude 会员号
+
+每个 Claude 号都用自己的长期 token 登录，换号就是换 token：
+
+1. `gcccode account add claude`（或面板里点「添加一个号」）。有别的 Claude 号时，会先问这个号走哪个代理。
+2. gcccode 运行官方的 `claude setup-token`，授权页只在**这个号专用的浏览器**里打开。这是一个单独的 Chrome（也支持 Edge、Brave、Chromium）用户目录，和你平时用的浏览器、和其他号的浏览器都不共用登录状态，也走这个号的代理。在里面登录这个 Pro 号，点授权。
+3. 终端会打印一串 `sk-ant-oat01-` 开头的 token，有效期约一年。把它粘贴回终端就加好了。
+
+为什么要专用浏览器：授权页认的是浏览器里已经登录的那个号。在已登录 A 号的浏览器里给 B 号授权，拿到的其实是 A 号的 token。用邮箱验证码登录的话，邮件里的链接要复制到这个专用浏览器里打开，别直接点。没装 Chromium 系浏览器时，gcccode 会让你在 Chrome 里新建一个个人资料，把授权链接粘贴到那里打开。
+
+之后 `gcccode claude` 选中哪个号，就把哪个号的 token 设成 `CLAUDE_CODE_OAUTH_TOKEN` 交给 Claude Code，shell 里自己 export 的同名变量会被忽略。所以**不要**把 token 写进 `.zshrc`。token 存在 `~/.config/gcccode/claude-token/`，只有你自己能读。
+
+```sh
+gcccode account browser 工作号        # 再打开这个号的专用浏览器，比如去 claude.ai 看用量
+gcccode account login 工作号          # 续期：重新走一遍 setup-token
+gcccode account token 工作号 -        # 已经有 token 了，从标准输入换上
+gcccode account add claude --login    # 改用完整登录（存在钥匙串里）
+```
+
+`gcccode accounts`、`doctor` 和面板会显示 token 还剩几天，剩 30 天以内会提醒续期；过期的号不会被选中。移除号时，本机的 token 和专用浏览器一起删掉，token 本身要到 claude.ai 的设置里撤销。
+
+长期 token 只有对话权限：额度照常统计、状态栏照常显示，但 Claude in Chrome 和 Remote Control 用不了。需要这两个功能的号，用 `--login` 加。
 
 状态栏一行类似：`工作号 · 5h 42% · 15:00 重置 · 周 18% · 下一个 备用号`
 
@@ -85,7 +133,7 @@ gcccode continue on     # 额度用完并退出后，自动在下一个号上续
 
 ## 换号为什么不丢记录
 
-Claude 每个号一个 `CLAUDE_CONFIG_DIR`。登录存在这个目录对应的钥匙串条目里，GCC Code 不读、不存 Claude 的 token。`projects/`、`history.jsonl`、`CLAUDE.md`、skills、commands 都软链接回你的 `~/.claude`，本地会话还在。
+Claude 每个号一个 `CLAUDE_CONFIG_DIR`。长期 token 号只在启动时把 token 交给 Claude Code。用 `--login` 加的号，登录存在这个目录对应的钥匙串条目里，GCC Code 不读、不存。`projects/`、`history.jsonl`、`CLAUDE.md`、skills、commands 都软链接回你的 `~/.claude`，本地会话还在。
 
 两个 Claude 会员之间不续同一个云端会话。那样官方会把两个号看成一组。换号时用本地记录生成接力文件，在下一个号上开新会话接着做。同一个号自己的会话仍然 `--resume`。
 
@@ -128,6 +176,18 @@ Antigravity（`agy`）暂时只收本机已经登录的那一个号。agy 把登
 - Antigravity 不给窗口数字，GCC Code 在 agy 退出后读它的日志：错误级别的 `RESOURCE_EXHAUSTED`、`quota reached` 这类才算额度用完，服务器忙、生图限额不算
 
 快到限额时通知一次。到了限额就冷却到重置时间，选号时跳过。
+
+## 用量页
+
+面板里的「用量」页算的是每个号实际用掉了多少 token：今天 / 7 天 / 30 天 / 90 天，每天的柱状图按客户端分色，再按账号、按模型列出来，最后是最近的会话各花了多少。数据全部来自官方客户端留在本机的会话记录，不发任何请求，也不上传：
+
+- Claude Code：`~/.claude/projects/` 里的会话 jsonl，`usage` 字段的输入 / 输出 / 缓存读写
+- Codex：`~/.codex/sessions/` 和 `archived_sessions/` 里的 rollout 文件，`token_count` 事件的累计值做差
+- Grok CLI：每个号目录下 `sessions/*/updates.jsonl` 的 `turn_completed`
+- Gemini CLI：`tmp/*/chats/session-*.json` 里每条消息的 `tokens`
+- Antigravity：本机不留 token 数，统计不到，页面会注明
+
+会话归到哪个号，看的是它从 GCC Code 启动时记下的归属；Codex 会话还能靠文件里的账号 ID 对上。直接用官方命令启动的会话对不上号，单独列成「没对上号的会话」，不会乱猜。扫描是增量的，每个文件只读上次之后新增的部分，结果缓存在 `~/.config/gcccode/usage-cache.json`；本机 1.4 GB 的 Codex 记录第一次扫不到 1 秒，之后几毫秒。
 
 ## 可选网关（默认关闭）
 

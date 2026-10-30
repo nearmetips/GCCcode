@@ -4,14 +4,17 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/nearmetips/DailiCode/internal/claude"
 	"github.com/nearmetips/DailiCode/internal/codex"
 	"github.com/nearmetips/DailiCode/internal/core"
 )
@@ -117,6 +120,28 @@ func TestClaudeExpiredTokenRefreshesFile(t *testing.T) {
 	b, _ := os.ReadFile(dir + "/.credentials.json")
 	if !jsonHas(b, "new") {
 		t.Fatalf("credentials file not updated: %s", b)
+	}
+}
+
+func TestClaudeSetupTokenIsUsedAsIsAndNeverRefreshed(t *testing.T) {
+	t.Setenv("GCCCODE_HOME", t.TempDir())
+	tok := "sk-ant-oat01-" + strings.Repeat("b", 60)
+	acc := core.Account{ID: "cl-tok", Kind: core.KindClaude, ConfigDir: t.TempDir(), TokenAt: time.Now()}
+	if err := claude.SaveToken(acc.ID, tok); err != nil {
+		t.Fatal(err)
+	}
+	st, _ := core.Load()
+	s := New(func(core.Account) *http.Client {
+		t.Fatal("a setup-token account must not hit the network")
+		return nil
+	})
+	got, err := s.Claude(context.Background(), st.Settings, acc, false, false)
+	if err != nil || got.Access != tok {
+		t.Fatalf("got %q, %v", got.Access, err)
+	}
+	var relogin *ReloginError
+	if _, err := s.Claude(context.Background(), st.Settings, acc, false, true); !errors.As(err, &relogin) {
+		t.Fatalf("a refused token should ask for a new one, got %v", err)
 	}
 }
 

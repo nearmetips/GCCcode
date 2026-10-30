@@ -192,6 +192,13 @@ func (s *Source) Claude(ctx context.Context, settings core.Settings, acc core.Ac
 	l := s.lock(acc.ID)
 	l.Lock()
 	defer l.Unlock()
+	if claude.UsesToken(acc) {
+		tok, ok := claude.ReadToken(acc.ID)
+		if !ok || force {
+			return Claude{}, &ReloginError{"这个号的长期 token 不能用了（过期或被撤销）。重新拿一个：gcccode account login " + acc.ID}
+		}
+		return Claude{Access: tok}, nil
+	}
 	c, err := claude.ReadCredentials(settings, acc.ConfigDir)
 	if err != nil {
 		return Claude{}, &ReloginError{err.Error()}

@@ -125,7 +125,7 @@ func openPanel() {
 		addr = web.Addr(st.Settings)
 	}
 	if !listening(addr) {
-		go func() { _ = web.Serve(addr) }()
+		go func() { _ = web.Serve(addr, false) }()
 		time.Sleep(200 * time.Millisecond)
 	}
 	web.OpenBrowser("http://" + addr)

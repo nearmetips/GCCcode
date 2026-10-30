@@ -24,6 +24,10 @@ func SettingsFile() string { return filepath.Join(Root(), "settings.json") }
 func BackupDir() string    { return filepath.Join(Root(), "backups") }
 func HandoffDir() string   { return filepath.Join(Root(), "handoffs") }
 
+// UsageCacheFile remembers what each transcript on disk added up to, so the
+// usage page only reads what changed since last time.
+func UsageCacheFile() string { return filepath.Join(Root(), "usage-cache.json") }
+
 // GatewayPIDFile records the running gateway process; GatewayLogFile is its output.
 func GatewayPIDFile() string { return filepath.Join(Root(), "gateway.pid") }
 func GatewayLogFile() string { return filepath.Join(Root(), "gateway.log") }
@@ -34,6 +38,14 @@ func GatewayProfileDir(kind string) string { return filepath.Join(Root(), "gatew
 
 // ClaudeProfileDir is the CLAUDE_CONFIG_DIR used for one Claude account.
 func ClaudeProfileDir(id string) string { return filepath.Join(Root(), "claude", id) }
+
+// ClaudeTokenFile holds one Claude account's long-lived token from
+// `claude setup-token`. It lives outside the profile, which Claude Code reads.
+func ClaudeTokenFile(id string) string { return filepath.Join(Root(), "claude-token", id) }
+
+// BrowserDir is the browser user data dir only one account signs in with, so
+// its web login never mixes with another account's or the user's own.
+func BrowserDir(id string) string { return filepath.Join(Root(), "browsers", id) }
 
 // CodexVaultDir holds one Codex account's auth.json snapshot.
 func CodexVaultDir(id string) string { return filepath.Join(Root(), "codex", id) }

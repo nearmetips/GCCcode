@@ -1,10 +1,10 @@
 #!/bin/sh
 # Install gcccode. Checksums always come from the release, never from a mirror.
-#   curl -fsSL https://raw.githubusercontent.com/nearmetips/DailiCode/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/nearmetips/GCCcode/main/install.sh | sh
 #   ... | sh -s -- --proxy http://127.0.0.1:7890 --mirror https://mirror.example/github.com
 set -eu
 
-repo="nearmetips/DailiCode"
+repo="nearmetips/GCCcode"
 version="${GCCCODE_VERSION:-}"
 mirror=""
 proxy=""

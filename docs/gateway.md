@@ -70,7 +70,7 @@ gcccode use-gateway on codex        # 让 gcccode codex 走网关、自动轮换
 - **Claude Pro**：只接 Claude Code（按 `claude-cli` UA 识别），转发到 `https://api.anthropic.com/v1/messages?beta=true`，加 `oauth-2025-04-20`、去掉 `x-api-key`，并把 `metadata.user_id` 里的 `device_id` / `account_uuid` 改成该号自己的。**进行中的会话绑定在同一个号上**（换号会被 Anthropic 判成异常）；额度用完返回 429，`gcccode claude` 退出后按 AutoContinue/确认，写交接文件用另一个号**新开会话**续接。
 - **多个 Claude 号必须各自设代理**（`gcccode account proxy <id> <url>`），否则同一出口会被判成一组，添加时就会拒绝。
 - **ChatGPT 订阅给其他 Agent**：非 Codex 的 Agent 发来的 `POST /v1/chat/completions` 或 `POST /v1/messages`，翻译成 Responses 再走 Codex 号池（流式、工具调用、图片），回复翻译回对应协议。这条路径用网关自己的身份，不冒充 Codex 客户端。
-- **令牌归属**：Codex 以 `~/.codex/auth.json`（当前登录的就是该号时）或账号库里的快照为准，刷新后写回账号库，必要时也写回 `~/.codex`（Codex 刷新前会重读，避免用到作废的 refresh token）；Claude 每次用前重读钥匙串 / `.credentials.json`，临近过期才刷新并写回；号池里正跑着该号的会话时，交给那个客户端自己续期，网关不并发刷新。快到期前（5 分钟）才刷新，刷新走该号自己的代理出口。
+- **令牌归属**：Codex 以 `~/.codex/auth.json`（当前登录的就是该号时）或账号库里的快照为准，刷新后写回账号库，必要时也写回 `~/.codex`（Codex 刷新前会重读，避免用到作废的 refresh token）；Claude 用长期 token 的号（`claude setup-token` 拿到的，约一年有效）直接带上这个 token，从不刷新，上游拒绝时标成「需要重新登录」，提示用 `gcccode account login <id>` 续期；用 `--login` 加的号每次用前重读钥匙串 / `.credentials.json`，临近过期才刷新并写回；号池里正跑着该号的会话时，交给那个客户端自己续期，网关不并发刷新。快到期前（5 分钟）才刷新，刷新走该号自己的代理出口。
 - 选号用号池的调度策略（smart / pace / manual）；每个号单独冷却、单独额度；`gateway status` 按账号显示已用百分比、成功/失败、冷却与「需要重新登录」。
 - **风险**：多开、超量轮换订阅号可能触犯 OpenAI / Anthropic 的服务条款，账号有被封风险，自行判断。添加订阅上游时会打印这条提示。
 

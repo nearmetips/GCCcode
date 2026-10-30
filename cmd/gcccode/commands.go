@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/nearmetips/DailiCode/internal/agy"
+	"github.com/nearmetips/DailiCode/internal/app"
 	"github.com/nearmetips/DailiCode/internal/bins"
 	"github.com/nearmetips/DailiCode/internal/claude"
 	"github.com/nearmetips/DailiCode/internal/codex"
@@ -382,16 +383,58 @@ func relaySet(args []string) error {
 	return nil
 }
 
+// cmdApp shows the panel in its own window. The panel listens on a port of
+// its own, so a `gcccode web` already running is left alone.
+func cmdApp(args []string) error {
+	if len(args) > 0 {
+		return fmt.Errorf("用法：gcccode app")
+	}
+	app.WidenPath()
+	if !app.Supported {
+		return cmdWeb(nil)
+	}
+	ln, err := web.Listen("127.0.0.1:0")
+	if err != nil {
+		return err
+	}
+	web.App = true
+	go func() {
+		if err := web.ServeOn(ln); err != nil {
+			fmt.Fprintln(os.Stderr, "gcccode:", err)
+		}
+	}()
+	return app.Run("http://"+ln.Addr().String(), "GCC Code")
+}
+
 func cmdWeb(args []string) error {
 	st, err := core.Load()
 	if err != nil {
 		return err
 	}
 	addr := web.Addr(st.Settings)
-	if len(args) >= 2 && args[0] == "--addr" {
-		addr = args[1]
+	open := true
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--addr":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--addr 需要一个地址，例如 127.0.0.1:4725")
+			}
+			i++
+			addr = args[i]
+		case "--no-open":
+			open = false
+		default:
+			return fmt.Errorf("用法：gcccode web [--addr 127.0.0.1:4725] [--no-open]")
+		}
 	}
-	return web.Serve(addr)
+	if web.Running(addr) {
+		fmt.Println("面板已经在运行：http://" + addr)
+		if open {
+			web.OpenBrowser("http://" + addr)
+		}
+		return nil
+	}
+	return web.Serve(addr, open)
 }
 
 func cmdTray() error { return tray.Run() }
@@ -450,6 +493,9 @@ func cmdDoctor() error {
 	if claude.RelayInSettings(st.Settings) {
 		fmt.Println("注意：~/.claude/settings.json 里有中转或 API Key。号池里的 Claude 账号会去掉这些，改走各自的会员登录。")
 	}
+	if os.Getenv(claude.TokenEnv) != "" {
+		fmt.Println("注意：这个 shell 里 export 了 " + claude.TokenEnv + "。直接敲 claude 会一直用这一个号；gcccode 启动时会换成各号自己的 token。建议从 ~/.zshrc 之类的配置里删掉，换号交给 gcccode。")
+	}
 	now := time.Now()
 	ready := accountReady(st)
 	for _, kind := range core.Kinds {
@@ -460,7 +506,9 @@ func cmdDoctor() error {
 		for _, row := range rows {
 			fmt.Printf("%-16s %s\n", row.Account.ID, row.Reason)
 			if row.Account.Kind == core.KindClaude {
-				if !claude.IsMainHome(st.Settings, row.Account.ConfigDir) {
+				if claude.UsesToken(row.Account) {
+					fmt.Printf("               %s\n", tokenLine(row.Account, now))
+				} else if !claude.IsMainHome(st.Settings, row.Account.ConfigDir) {
 					fmt.Printf("               钥匙串条目 %s\n", claude.KeychainService(row.Account.ConfigDir))
 				}
 				if bad := claude.LinkReport(st.Settings, row.Account.ConfigDir); len(bad) > 0 {
@@ -504,6 +552,18 @@ func cmdDoctor() error {
 	}
 	fmt.Println("策略", st.Settings.Strategy, " 自动续接", map[bool]string{true: "on", false: "off"}[st.Settings.AutoContinue])
 	return nil
+}
+
+// tokenLine describes a setup-token account's token and when to renew it.
+func tokenLine(a core.Account, now time.Time) string {
+	left := claude.TokenDaysLeft(a, now)
+	switch {
+	case left < 0:
+		return "长期 token 已过期。重新拿一个：gcccode account login " + a.ID
+	case left <= 30:
+		return fmt.Sprintf("长期 token 还剩 %d 天，该续期了：gcccode account login %s", left, a.ID)
+	}
+	return fmt.Sprintf("长期 token，%s 存的，还剩 %d 天", a.TokenAt.Local().Format("2006-01-02"), left)
 }
 
 // gatewayDoctor describes the optional gateway for `gcccode doctor`, and says

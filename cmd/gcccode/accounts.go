@@ -10,6 +10,7 @@ import (
 
 	"github.com/nearmetips/DailiCode/internal/agy"
 	"github.com/nearmetips/DailiCode/internal/bins"
+	"github.com/nearmetips/DailiCode/internal/browser"
 	"github.com/nearmetips/DailiCode/internal/claude"
 	"github.com/nearmetips/DailiCode/internal/codex"
 	"github.com/nearmetips/DailiCode/internal/core"
@@ -57,13 +58,16 @@ func cmdAccounts() error {
 				usage = strings.TrimPrefix(usage, " · ")
 			}
 			fmt.Printf("  %-16s %s%s\n             %s\n", name, row.Reason, extra, usage)
+			if claude.UsesToken(row.Account) && claude.TokenDaysLeft(row.Account, now) <= 30 {
+				fmt.Println("             " + tokenLine(row.Account, now))
+			}
 		}
 		if line := scheduler.NoneUsable(rows, now); line != "" {
 			fmt.Println("  " + line)
 		}
 	}
 	if !any {
-		fmt.Println("号池是空的。gcccode account add claude 或 gcccode account add codex")
+		fmt.Println("号池是空的。运行 gcccode web 在面板里点着加号，或 gcccode account add claude")
 	}
 	return nil
 }
@@ -77,13 +81,22 @@ func cmdAccount(args []string) error {
 		if len(args) < 2 {
 			return fmt.Errorf("用法：gcccode account add claude|codex|gemini|grok|agy [名称]")
 		}
-		label := ""
-		if len(args) > 2 {
-			label = strings.Join(args[2:], " ")
+		var words []string
+		fullLogin := false
+		for _, a := range args[2:] {
+			if a == "--login" {
+				fullLogin = true
+				continue
+			}
+			words = append(words, a)
 		}
+		label := strings.Join(words, " ")
 		switch args[1] {
 		case core.KindClaude:
-			return addClaude(label)
+			if fullLogin {
+				return addClaude(label)
+			}
+			return addClaudeToken(label)
 		case core.KindCodex:
 			return addCodex(label)
 		case core.KindGemini:
@@ -106,6 +119,31 @@ func cmdAccount(args []string) error {
 			return fmt.Errorf("用法：gcccode account login <id>")
 		}
 		return loginAccount(args[1])
+	case "token":
+		if len(args) < 2 {
+			return fmt.Errorf("用法：gcccode account token <id> [token|-]")
+		}
+		value := ""
+		if len(args) > 2 {
+			value = args[2]
+		}
+		return tokenAccount(args[1], value)
+	case "browser":
+		if len(args) < 2 {
+			return fmt.Errorf("用法：gcccode account browser <id> [网址]")
+		}
+		st, err := core.Load()
+		if err != nil {
+			return err
+		}
+		if _, ok := st.Account(args[1]); !ok {
+			return fmt.Errorf("没有这个账号：%s", args[1])
+		}
+		url := "https://claude.ai/"
+		if len(args) > 2 {
+			url = args[2]
+		}
+		return openAccountBrowser(args[1], url)
 	case "rm", "remove":
 		if len(args) < 2 {
 			return fmt.Errorf("用法：gcccode account rm <id>")
@@ -422,6 +460,9 @@ func loginAccount(id string) error {
 	}
 	switch a.Kind {
 	case core.KindClaude:
+		if claude.UsesToken(*a) {
+			return tokenAccount(id, "")
+		}
 		if err := claude.EnsureProfile(st.Settings, a.ConfigDir); err != nil {
 			return err
 		}
@@ -703,6 +744,11 @@ func removeAccount(id string) error {
 			_ = os.MkdirAll(filepath.Dir(dst), 0o700)
 			_ = os.Rename(core.CodexVaultDir(id), dst)
 		}
+		token := claude.UsesToken(*a)
+		if a.Kind == core.KindClaude {
+			claude.RemoveToken(id)
+			browser.Remove(id)
+		}
 		next := s.Accounts[:0]
 		for _, item := range s.Accounts {
 			if item.ID != id {
@@ -717,6 +763,9 @@ func removeAccount(id string) error {
 			s.State.CodexCurrent = ""
 		}
 		fmt.Printf("已从号池移除 %s。聊天记录还在原来的地方。\n", id)
+		if token {
+			fmt.Println("本机存的 token 和它的专用浏览器也删了。token 本身要到 claude.ai 的设置里才能撤销。")
+		}
 		return nil
 	})
 	return err

@@ -38,6 +38,11 @@ curl_base() {
 }
 
 if [ -z "$version" ]; then
+  # 发布页的跳转不走 API，不受每小时 60 次的匿名限额（共用出口 IP 时很容易撞上）。
+  final=$(curl_base -o /dev/null -w '%{url_effective}' "https://github.com/${repo}/releases/latest" 2>/dev/null || true)
+  version=$(printf '%s' "$final" | sed -n 's#.*/tag/v\{0,1\}\([^/]*\)$#\1#p')
+fi
+if [ -z "$version" ]; then
   version=$(curl_base "https://api.github.com/repos/${repo}/releases/latest" | sed -n 's/.*"tag_name": *"v\{0,1\}\([^"]*\)".*/\1/p' | head -1)
 fi
 if [ -z "$version" ]; then

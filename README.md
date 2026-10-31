@@ -8,9 +8,7 @@ Claude / Codex / Gemini / Grok / Antigravity 五个官方客户端，当成一�
 
 English: [README.en.md](README.en.md)
 
-## 和 magpie 的差别
-
-[magpie](https://github.com/yetone/magpie) 把订阅借给所有第三方工具，并常驻一个本机协议网关做请求级 failover。Anthropic 会把不是 Claude Code 的系统提示认成第三方流量，所以那条路要去驱动官方程序、再把工具桥接进去。
+ 
 
 GCC Code 主路径不走那条路：官方客户端只用它自己的登录，号按会话固定，不按请求轮换；额度到了就停到重置时间，不硬顶。
 
